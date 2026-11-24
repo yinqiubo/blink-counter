@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>眨眼计数助手</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>眨眼计数助手</h1>
+        <p class="brand-sub">双阈值滞回 · 单眼不计 · 可撤销计数</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="cam-status" id="camStatus" data-on="false">
+        <span class="dot" aria-hidden="true"></span>
+        <span id="camStatusText">摄像头未开启</span>
+      </div>
+      <button id="btnMirror" class="btn btn-ghost" hidden>镜像</button>
+      <button id="btnFlip" class="btn btn-ghost" hidden>切换摄像头</button>
+      <button id="btnCamOff" class="btn btn-ghost" hidden>关闭摄像头</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="camera-col">
+      <div class="video-wrap" id="videoWrap">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+
+        <div class="video-empty" id="videoEmpty">
+          <p class="ve-title">摄像头未开启</p>
+          <p class="ve-desc">点击「开始」授权摄像头。正对镜头，让脸部完整出现在画面里即可。</p>
+        </div>
+
+        <div class="hud" id="hud">
+          <span class="hud-state" id="hudState">就绪</span>
+          <span class="hud-angle" id="hudAngle">强度 --</span>
+        </div>
+
+        <div class="flash" id="flash" aria-hidden="true">+1</div>
+        <div class="hint" id="hint" hidden></div>
+
+        <div class="zoom-ctl" id="zoomCtl" hidden>
+          <button class="zoom-btn" id="zoomOut" type="button" aria-label="缩小">−</button>
+          <button class="zoom-val" id="zoomVal" type="button" title="恢复最小倍率">1.0×</button>
+          <button class="zoom-btn" id="zoomIn" type="button" aria-label="放大">+</button>
+        </div>
+      </div>
+      <p class="camera-tip">画面为本地处理，不会上传；右上角可随时关闭摄像头。</p>
+    </section>
+
+    <aside class="panel">
+      <div class="counter-card">
+        <p class="counter-label">眨眼次数</p>
+        <p class="counter" id="count" aria-live="polite">0</p>
+        <p class="counter-split" id="countSplit">自动 0 · 补记 0 · 已撤销 0</p>
+      </div>
+
+      <div class="status-card">
+        <p class="status-title" id="statusTitle">就绪</p>
+        <p class="status-desc" id="statusDesc">点击「开始」授权摄像头，正对镜头后正常眨眼即可计数。</p>
+      </div>
+
+      <div class="actions">
+        <button id="btnStart" class="btn btn-primary">开始</button>
+        <button id="btnPause" class="btn" disabled>暂停</button>
+        <button id="btnEnd" class="btn btn-danger" disabled>结束</button>
+      </div>
+
+      <div class="actions actions-sub">
+        <button id="btnUndo" class="btn btn-ghost" disabled>撤销上一次</button>
+        <button id="btnManual" class="btn btn-ghost" disabled>补记 +1</button>
+      </div>
+    </aside>
+  </main>
+
+  <section class="log-section">
+    <div class="log-head">
+      <h2>计数记录</h2>
+      <span class="log-legend">点击任意记录可撤销 / 恢复</span>
+    </div>
+    <ol class="log" id="log"></ol>
+    <p class="log-empty" id="logEmpty">还没有计数记录</p>
+  </section>
+
+  <details class="about">
+    <summary>规则说明与素材来源</summary>
+    <div class="about-body">
+      <p><strong>计数规则</strong>：双眼闭合强度同时 ≥0.5，并持续 50ms（约 2 帧）记 1 次；强度瞬间 ≥0.75 时单帧即可计数，用于捕捉快速眨眼。之后必须连续睁眼（强度 ≤0.25）保持 100ms，才允许记下一次。0.5–0.25 之间为过渡带，状态不变，所以眯眼徘徊不会重复计数。只闭单眼（挤眼、单眼遮挡）不计。两次计数间隔小于 200ms 视为同一次。检测不到人脸连续 5 帧进入「看不清」，计数暂停，恢复后必须确认睁眼才继续。</p>
+      <p><strong>反馈</strong>：判定在闭眼瞬间触发，数字与 +1 动效同步出现；记录里保存每次的闭眼持续时长与反馈延迟，便于核对误计、漏计。</p>
+      <p><strong>模型与素材</strong>：Google MediaPipe Face Landmarker（float16，Apache-2.0），通过 blendshape 的 eyeBlinkLeft / eyeBlinkRight 两项判断闭眼程度；推理库 @mediapipe/tasks-vision 0.10.14。摄像头画面由使用者本机采集、在浏览器内推理，不上传服务器。</p>
+    </div>
+  </details>
+
+</div>
+
+<div class="modal" id="summaryModal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="summaryTitle">
+    <h2 id="summaryTitle">本次统计</h2>
+    <div class="summary-grid">
+      <div class="summary-item"><span class="summary-num" id="sumAuto">0</span><span class="summary-label">自动计数</span></div>
+      <div class="summary-item"><span class="summary-num" id="sumManual">0</span><span class="summary-label">手动补记</span></div>
+      <div class="summary-item"><span class="summary-num" id="sumDeleted">0</span><span class="summary-label">已撤销</span></div>
+      <div class="summary-item"><span class="summary-num" id="sumLatency">--</span><span class="summary-label">平均反馈延迟</span></div>
+    </div>
+    <p class="summary-note" id="summaryNote"></p>
+    <div class="modal-actions">
+      <button id="btnResume" class="btn">继续</button>
+      <button id="btnCloseSummary" class="btn btn-primary">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.setTimeout(function () {
+    if (window.__appReady) return;
+    var card = document.querySelector(".status-card");
+    var title = document.getElementById("statusTitle");
+    var desc = document.getElementById("statusDesc");
+    if (card) card.dataset.tone = "warn";
+    if (title) title.textContent = "脚本加载失败";
+    if (desc) desc.textContent = "页面资源未能加载，请刷新重试；若反复失败，请更换浏览器或网络。";
+  }, 8000);
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
